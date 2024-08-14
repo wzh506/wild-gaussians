@@ -1,7 +1,21 @@
+import sys
+import os
+
+# # 保存原始 sys.path
+# original_sys_path = sys.path.copy()
+
+# # 将标准库路径添加到 sys.path 的前面
+# sys.path = [os.path.dirname(os.__file__)] + sys.path
+# import logging  # 导入标准库的 logging 模块
+# sys.path = original_sys_path
+# # 恢复原始 sys.path
+import datetime
+import torchvision
+import logging  # 导入标准库的 logging 模块
 import json
 from functools import partial
-import logging
 import math
+import logging
 import time
 import shutil
 from omegaconf import OmegaConf
@@ -11,8 +25,8 @@ from tqdm import tqdm
 from pathlib import Path
 import numpy as np
 import click
-from .types import FrozenSet, Method, Dataset, DatasetFeature, EvaluationProtocol, Logger
 from .evaluation import render_all_images, evaluate, compute_metrics, DefaultEvaluationProtocol
+from .types import FrozenSet, Method, Dataset, DatasetFeature, EvaluationProtocol, Logger
 from .logging import TensorboardLogger
 from .datasets import load_dataset
 from .datasets.phototourism import horizontal_half_dataset
@@ -119,7 +133,7 @@ def eval_all(method: Method, logger: Logger, dataset: Dataset, *, output: str, s
 
 
 
-def eval_few_custom(method: WildGaussians, logger: Logger, dataset: Dataset, split: str, step: int, evaluation_protocol: EvaluationProtocol):
+def eval_few_custom(method: WildGaussians, logger: Logger, dataset: Dataset, split: str, step: int, evaluation_protocol: EvaluationProtocol,output_path: str):
     disable_tqdm = False
 
     embeddings = None
@@ -143,12 +157,24 @@ def eval_few_custom(method: WildGaussians, logger: Logger, dataset: Dataset, spl
         evaluation_dataset = horizontal_half_dataset(dataset, left=False)
         images_f = [image_to_srgb(img, dtype=np.float32) for img in evaluation_dataset["images"]]
         for i, result_no_optim in tqdm(enumerate(method.render(evaluation_dataset["cameras"])), desc="rendering", total=len(dataset["cameras"]), disable=disable_tqdm):
+            # print('images_f[i] is:',images_f[i].shape)#735,508,3
+            # print('type(result_no_optim["color"])',type(result_no_optim["color"]))
+            # print('result_no_optim["color"] is:',result_no_optim["color"].shape)#735,507,3 #图片大小居然不一致,这两个不一样大就完了
+            # 把eval的图片保存下来！
             metrics.update({
-                k + "-nopt": v for k, v in compute_metrics(image_to_srgb(result_no_optim["color"], dtype=np.float32), images_f[i]).items()
+                k + "-nopt": v for k, v in compute_metrics(image_to_srgb(result_no_optim["color"], dtype=np.float32), images_f[i]).items()#分别是pred和gt
             })
+            # print('are you ok???')
             eval_few_rows[i].append(image_to_srgb(result_no_optim["color"], dtype=np.uint8))
+        #保存图片进行查看
+            # torchvision.utils.save_image(images_f[i], os.path.join(f"{output_path}/during_training/renders_gt_visibility", f"{step}" + "_render.jpg"))
+            # torchvision.utils.save_image(image_to_srgb(result_no_optim["color"]), os.path.join(f"{output_path}/during_training/renders_gt_visibility", f"{step}" + "_gt.jpg"))
+        # torchvision.utils.save_image(render_pkg["visibility"].squeeze(), os.path.join(f"{dataset.model_path}/during_training/renders_gt_visibility", f"{iteration}_{viewpoint_cam.image_name}" + "_visibility.jpg"))
+
+
     else:
         images_f = [image_to_srgb(img, dtype=np.float32) for img in evaluation_dataset["images"]]
+
 
     for i in range(len(evaluation_dataset["cameras"])):
         eval_few_rows[i].insert(0, evaluation_dataset["images"][i])
@@ -160,11 +186,13 @@ def eval_few_custom(method: WildGaussians, logger: Logger, dataset: Dataset, spl
         renders.append(image_to_srgb(result_optim["color"], dtype=np.uint8))
         eval_few_rows[i].append(image_to_srgb(result_optim["color"], dtype=np.uint8))
     assert result_optim is not None
+    # print('are you ok??????????????')
     cast(Dict, evaluation_dataset)["renders"] = renders
 
     with logger.add_event(step) as event:
         for k, v in metrics.pop().items():
             event.add_scalar(f"eval-few-{split}/{k}", v)
+            # print('making this')
         # optimization_dataset.images[i], 
         # image_to_srgb(optim["render_output"]["color"], dtype=np.uint8),
         if evaluation_protocol.get_name() == "nerfw":
@@ -194,8 +222,8 @@ def eval_few_custom(method: WildGaussians, logger: Logger, dataset: Dataset, spl
 @click.option("--output", type=str, default=".")
 @click.option("--verbose", "-v", is_flag=True)
 @click.option("--debug", is_flag=True)
-@click.option("--dataset-type", type=click.Choice(["default", "nerfonthego", "phototourism"]), default="default")
-@click.option("--eval-few-iters", type=IndicesClickType(), default=Indices.every_iters(2_000), help="When to evaluate on few images")
+@click.option("--dataset-type", type=click.Choice(["default", "nerfonthego", "phototourism"]), default="phototourism")#默认运行phototourism
+@click.option("--eval-few-iters", type=IndicesClickType(), default=Indices.every_iters(4_00), help="When to evaluate on few images")
 @click.option("--set", "config_overrides", help="Override a parameter in the method.", type=SetParamOptionType(), multiple=True, default=None)
 def train_command(
     data,
@@ -212,7 +240,7 @@ def train_command(
         config_overrides = config_overrides or ()
         config_overrides = config_overrides + (("iterations", "100"),)
         print(config_overrides)
-        eval_few_iters = Indices.every_iters(70)
+        eval_few_iters = Indices.every_iters(100)
     logging.basicConfig(level=logging.INFO if not debug else logging.DEBUG)
     setup_logging(verbose)
 
@@ -238,16 +266,17 @@ def train_command(
         if dataset_type == "nerfonthego":
             assert config_overrides["config"] == "nerfonthego.yml"
         from .datasets.colmap import load_colmap_dataset
-        evaluation_protocol = DefaultEvaluationProtocol()
+        evaluation_protocol = DefaultEvaluationProtocol()#采用default模式，使用default.yml的数据读取方式
         load_dataset_fn = partial(
             load_dataset, 
             load_dataset_fn=load_colmap_dataset, 
             images_path="images",
             evaluation_protocol=evaluation_protocol.get_name()
         )
-
-    test_dataset = load_dataset_fn(data, "test", features, load_features=False)
+    #print('data is',data)#我们输入的命令行参数--data
+    #读取训练/测试数据
     train_dataset = load_dataset_fn(data, "train", features, load_features=False)
+    test_dataset = load_dataset_fn(data, "test", features, load_features=False)
     if dataset_type == "nerfonthego":
         dataset_not_official = "Please use the dataset provided for the WG paper"
         assert os.path.exists(os.path.join(data, "info.json")), dataset_not_official
@@ -270,7 +299,14 @@ def train_command(
     test_dataset["images"] = [x[..., :3] for x in test_dataset["images"]]
     train_images_thumbnails = [img[::8, ::8].copy() for img in train_dataset["images"]]
 
-    output_path = Path(output)
+    #在这里设计了一个随机数
+    current_time = datetime.datetime.now()
+    time_based_name = current_time.strftime("%Y%m%d_%H%M%S")
+    current_working_directory = os.getcwd()
+    output_path = os.path.join(current_working_directory,"output", f"sacre_wg_30000_{time_based_name}")
+    output_path = Path(output_path)
+    os.mkdir(output_path)
+    print('output_path is:',output_path)#
 
     # Store a slice of train dataset used for eval_few
     train_dataset_eval_few = datasets.dataset_index_select(train_dataset, [0, 1, 2, 3])
@@ -290,14 +326,15 @@ def train_command(
     # Log hparams
     logger.add_hparams(cast(Dict, OmegaConf.to_container(method.config, resolve=True)))
 
+    method.output_path = output_path
     info = method.get_info()
     acc_metrics = MetricsAccumulator()
 
     num_iterations = info["num_iterations"]
     assert num_iterations is not None, "num_iterations must be set in the config"
     step = 0
-    for step in (pbar := tqdm(range(num_iterations), miniters=10, desc="training", disable=debug)):
-        metrics = method.train_iteration(step)
+    for step in (pbar := tqdm(range(num_iterations), miniters=10, desc="training", disable=debug)):#开始训练
+        metrics = method.train_iteration(step)#what?
         step += 1
 
         acc_metrics.update(metrics)
@@ -318,10 +355,11 @@ def train_command(
             method.save(str(path))
             logging.info(f"checkpoint saved at step={step}")
 
-        if step in eval_few_iters:
-            logging.info(f"evaluating on few images at step {step}")
-            eval_few_custom(method, logger, train_dataset_eval_few, split="train", step=step, evaluation_protocol=evaluation_protocol)
-            eval_few_custom(method, logger, test_dataset_eval_few, split="test", step=step, evaluation_protocol=evaluation_protocol)
+        # if step in eval_few_iters:
+        #     logging.info(f"evaluating on few images at step {step}")
+        #     eval_few_custom(method, logger, train_dataset_eval_few, split="train", step=step, evaluation_protocol=evaluation_protocol,output_path=output_path)#会出现gt和pred大小不一致的报错
+        #     eval_few_custom(method, logger, test_dataset_eval_few, split="test", step=step, evaluation_protocol=evaluation_protocol,output_path=output_path)
+        #     logging.info(f"end evaluating")
 
         if step % 10_000 == 0:
             # Display embeddings
@@ -356,3 +394,9 @@ def train_command(
 
 if __name__ == "__main__":
     train_command()  # pylint: disable=no-value-for-parameter
+    # nerfbaselines train --method wildgaussians --data external://gpfs/dataset/imw_yanxu/trevi_fountain/dense
+    # python train.py --data /data/wangzhaohui/github/dataset/trevi_fountain
+    # CUDA_visible_devices=2 python main.py --data /data/wangzhaohui/github/dataset/trevi_fountain/dense
+    # nohup python main.py --data /data/wangzhaohui/github/dataset/trevi_fountain/dense > trevi.log 2>&1 &
+    # CUDA_visible_devices=2 python main.py --data /gpfs/dataset/imw_yanxu/sacre_coeur/dense
+    # nohup python main.py --data /gpfs/dataset/imw_yanxu/sacre_coeur/dense > sacre.log 2>&1 &

@@ -19,28 +19,40 @@ from .colmap import load_colmap_dataset
 DATASET_NAME = "phototourism"
 
 
+#load这里不知道为什么需要对文件名进行预判
 def load_phototourism_dataset(path: Union[Path, str], split: str, use_nerfw_split=None, **kwargs):
+    # print('path is',path)#通常是str
+    # print('split is',split)
+    # print('use_nerfw_split is',use_nerfw_split)#最好使用吧?
     path = Path(path)
     use_nerfw_split = use_nerfw_split if use_nerfw_split is not None else True
+    # print('use_nerfw_split is',use_nerfw_split)#变为true
     if split:
         assert split in {"train", "test"}
-    if DATASET_NAME not in str(path) or not any(
-        s in str(path) for s in _phototourism_downloads
-    ):
+    # if DATASET_NAME not in str(path) or not any(
+    #     s in str(path) for s in _phototourism_downloads
+    # ):#两个必须同时满足,这里才能识别到!#第一条我觉得很蠢,删除!
+    if not any(s in str(path) for s in _phototourism_downloads):#如果检查不到任何一个数据集类别  
         raise DatasetNotFoundError(
-            f"360 and {set(_phototourism_downloads.keys())} is missing from the dataset path: {path}"
+            f"360 and {set(_phototourism_downloads.keys())} is missing from the dataset path: {path}"#最好把下面数据集的-改成_
         )
 
     # Load phototourism dataset
-    scene = single(res for res in _phototourism_downloads if str(res) in path.name)
+    # scene = single(res for res in _phototourism_downloads if str(res) in path.name)#这样路径会报错(我们数据集是dense结尾)
+    scene_words = str(path).split('/')
+    keys_words = [key for key in _phototourism_downloads.keys()] 
+    common_words = set(scene_words) & set(keys_words)
+    scene = common_words.pop()#返回第一个元素
+    print('scene is',scene)
+    # print('path is:',path)
     images_path = "images"
     split_list = None
     if use_nerfw_split:
-        if (path / "nerfw_split.csv").exists():
+        if (path / "nerfw_split.csv").exists():#要求dense路径下面有nerfw_split.csv(没有使用tsv)
             with (path / "nerfw_split.csv").open() as f:
                 reader = csv.reader(f, delimiter="\t")
                 next(reader)
-                split_list = [x[0] for x in reader if x[2] == split]
+                split_list = [x[0] for x in reader if x[2] == split]#读取每一列的第一个元素(我觉得这是图片的路径)(如果第三列是train或者test)
                 assert len(split_list) > 0, f"{split} list is empty"
         else:
             logging.warning(
@@ -66,11 +78,12 @@ def load_phototourism_dataset(path: Union[Path, str], split: str, use_nerfw_spli
     dataset_len = len(dataset["image_paths"])
     if split_list is not None:
         indices = np.array(
-            [i for i, x in enumerate(dataset["image_paths"]) if Path(x).name in split_list]
+            [i for i, x in enumerate(dataset["image_paths"]) if Path(x).name in split_list]#看样子split_list是图片的名称(name)?#
         )
         assert len(indices) > 0, f"No images found in {split} list"
         logging.info(f"Using {len(indices)}/{dataset_len} images from the NeRF-W {split} list")
     else:
+        
         all_indices = np.arange(dataset_len)
         llffhold = 8
         if split == "train":
@@ -86,7 +99,7 @@ def load_phototourism_dataset(path: Union[Path, str], split: str, use_nerfw_spli
 # We removed the prague_old_town in 2021 due to data inconsistencies.
 
 _phototourism_downloads = {
-    "brandenburg-gate": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/brandenburg_gate.tar.gz",
+    "brandenburg_gate": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/brandenburg_gate.tar.gz",
     "buckingham-palace": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/buckingham_palace.tar.gz",
     "colosseum-exterior": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/colosseum_exterior.tar.gz",
     "grand-palace-brussels": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/grand_place_brussels.tar.gz",
@@ -95,16 +108,16 @@ _phototourism_downloads = {
     "pantheon-exterior": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/pantheon_exterior.tar.gz",
     "taj-mahal": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/taj_mahal.tar.gz",
     "temple-nara": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/temple_nara_japan.tar.gz",
-    "trevi-fountain": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/trevi_fountain.tar.gz",
-    "sacre-coeur": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/sacre_coeur.tar.gz",
+    "trevi_fountain": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/trevi_fountain.tar.gz",
+    "sacre_coeur": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/sacre_coeur.tar.gz",
     # "prague-old-town": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/prague_old_town.tar.gz",
     "hagia-sophia": "https://www.cs.ubc.ca/research/kmyi_data/imw2020/TrainingData/hagia_sophia.tar.gz",
 }
 
 _split_lists = {
-    "brandenburg-gate": "https://nerf-w.github.io/data/selected_images/brandenburg.tsv",
-    "trevi-fountain": "https://nerf-w.github.io/data/selected_images/trevi.tsv",
-    "sacre-coeur": "https://nerf-w.github.io/data/selected_images/sacre.tsv",
+    "brandenburg_gate": "https://nerf-w.github.io/data/selected_images/brandenburg.tsv",
+    "trevi_fountain": "https://nerf-w.github.io/data/selected_images/trevi.tsv",
+    "sacre_coeur": "https://nerf-w.github.io/data/selected_images/sacre.tsv",
     # "prague-old-town": "https://nerf-w.github.io/data/selected_images/prague.tsv",
     "hagia-sophia": "https://nerf-w.github.io/data/selected_images/hagia.tsv",
     "taj-mahal": "https://nerf-w.github.io/data/selected_images/taj_mahal.tsv",

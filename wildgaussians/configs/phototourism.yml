@@ -18,5 +18,4 @@ uncertainty_preserve_sky: false
 
 appearance_enabled: true
 appearance_n_fourier_freqs: 4
-
 num_sky_gaussians: 100000

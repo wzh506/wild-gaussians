@@ -16,7 +16,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from .datasets import new_dataset
+from .datasets import new_dataset#
 from .utils import (
     read_image, 
     convert_image_dtype, 
@@ -211,6 +211,7 @@ def mse(a: np.ndarray, b: np.ndarray) -> Union[np.ndarray, np.float32]:
     assert a.dtype.kind == "f" and b.dtype.kind == "f", f"Expected floating point inputs, got {a.dtype} and {b.dtype}"
     a = _normalize_input(a)
     b = _normalize_input(b)
+    #print('are you ok?')
     return _mean((a - b) ** 2)
 
 

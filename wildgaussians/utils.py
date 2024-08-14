@@ -129,6 +129,7 @@ def linear_to_srgb(img):
 
 def image_to_srgb(tensor, dtype, color_space: Optional[str] = None, allow_alpha: bool = False, background_color: Optional[np.ndarray] = None):
     # Remove alpha channel in uint8
+    # print('tensor.shape is',tensor.shape)
     if color_space is None:
         color_space = "srgb"
     if tensor.shape[-1] == 4 and not allow_alpha:

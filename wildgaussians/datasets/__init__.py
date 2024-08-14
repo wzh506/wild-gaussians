@@ -5,7 +5,7 @@ from ..types import Dataset, DatasetFeature, CameraModel, FrozenSet, NB_PREFIX
 from ._common import dataset_load_features as dataset_load_features
 from ._common import dataset_index_select as dataset_index_select
 from ._common import new_dataset as new_dataset
-from ..types import UnloadedDataset, Literal
+from ..types import UnloadedDataset, Literal#
 
 
 @overload

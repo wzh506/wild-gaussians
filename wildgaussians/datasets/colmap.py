@@ -232,6 +232,7 @@ def load_colmap_dataset(path: Union[Path, str],
     if images_path is None:
         images_path = Path("images")
     images_path = path / images_path
+    # print('we nee', colmap_path, images_path)
     if not colmap_path.exists():
         raise DatasetNotFoundError("Missing 'sparse/0' folder in COLMAP dataset")
     if not (colmap_path / "cameras.bin").exists() and not (colmap_path / "cameras.txt").exists():

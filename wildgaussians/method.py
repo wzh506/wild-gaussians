@@ -17,6 +17,7 @@ import numpy as np
 from random import randint
 
 import torch
+import torchvision
 from omegaconf import OmegaConf
 from plyfile import PlyData, PlyElement
 
@@ -1493,7 +1494,7 @@ class GaussianModel(nn.Module):
 
         subpixel_offset = torch.zeros((int(height), int(width), 2), dtype=torch.float32, device=device)
             
-        raster_settings = GaussianRasterizationSettings(
+        raster_settings = GaussianRasterizationSettings(#为什么你运行会报错
             image_height=int(height),
             image_width=int(width),
             tanfovx=tanfovx,
@@ -1639,7 +1640,7 @@ class WildGaussians(Method):
 
         # Used for saving
         self._json_cameras = None
-
+        self.output_path = None #等待后续赋值
         # Initialize system state (RNG)
         safe_state()
 
@@ -1850,6 +1851,7 @@ class WildGaussians(Method):
         )
         return [self.train_cameras[i] for i in indices]
 
+    #训练都在这个函数中
     def train_iteration(self, step):
         assert self.train_cameras is not None, "Method not initialized"
         assert self.model.optimizer is not None, "Method not initialized"
@@ -1887,13 +1889,28 @@ class WildGaussians(Method):
         assert image.shape == (3, image_height, image_width), f"image.shape={image.shape}"
 
         # Loss
-        gt_image = self.train_images[camera_id].to(device)
+        gt_image = self.train_images[camera_id].to(device) #真值
         sampling_mask = self.train_sampling_masks[camera_id].to(device) if self.train_sampling_masks is not None else None 
+
+        # Before apply mask,save pictures
+        if iteration % 200 == 0:
+            print('now saving')
+            if not os.path.exists(f"{self.output_path}/during_training/renders_gt_visibility"):
+                os.makedirs(f"{self.output_path}/during_training/renders_gt_visibility")
+            torchvision.utils.save_image(gt_image.cpu(), os.path.join(f"{self.output_path}/during_training/renders_gt_visibility", f"{iteration}" + "_gt.jpg"))
+            torchvision.utils.save_image(image_toned.cpu(), os.path.join(f"{self.output_path}/during_training/renders_gt_visibility", f"{iteration}" + "_render.jpg"))
+            torchvision.utils.save_image(image.cpu(), os.path.join(f"{self.output_path}/during_training/renders_gt_visibility", f"{iteration}" + "_raw_render.jpg"))
+            try:
+                torchvision.utils.save_image(sampling_mask.cpu(), os.path.join(f"{self.output_path}/during_training/renders_gt_visibility", f"{iteration}" + "_visibility.jpg"))
+                print('success to save!')
+            except:
+                print('type(sampling_mask) is:',type(sampling_mask),"fail to save!")
+
 
         # Apply mask
         if sampling_mask is not None:
-            image = scale_grads(image, sampling_mask)
-            image_toned = scale_grads(image_toned, sampling_mask)
+            image = scale_grads(image, sampling_mask)#render
+            image_toned = scale_grads(image_toned, sampling_mask)#raw_render （这两个有什么区别呢？）
 
         uncertainty_loss = 0
         metrics = {}
@@ -2006,3 +2023,6 @@ class WildGaussians(Method):
         self.model.save_ply(os.path.join(path, "point_cloud.ply"))
         torch.save(self.model.state_dict(), str(path) + f"/chkpnt-{self.step}.pth")
         OmegaConf.save(self.config, os.path.join(path, "config.yaml"))
+    
+# "/gpfs/dataset/imw_yanxu/trevi_fountain/dense"
+# nerfbaselines train --method wildgaussians --data external://gpfs/dataset/imw_yanxu/trevi_fountain/dense
